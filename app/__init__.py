@@ -2,10 +2,10 @@ import os
 import redis
 from flask import Flask
 from app.config import Config
-from app.queue.priority_queue import PriorityQueue
-from app.queue.dead_letter_queue import DeadLetterQueue
-from app.workers.worker_pool import WorkerPool
-from app.ai.classifier import AIClassifier
+from task_queue.priority_queue import PriorityQueue
+from task_queue.dead_letter_queue import DeadLetterQueue
+from workers.worker_pool import WorkerPool
+from ai.classifier import AIClassifier
 from app.api.sse import EventBus, create_sse_blueprint
 from app.api.routes import create_main_blueprint, create_dlq_blueprint
 

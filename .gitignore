@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+
+# Pytest / testing
+.pytest_cache/
+pytest_output.txt
+pytest_classifier_out.txt
+pytest_worker_out.txt
+pytest_api_out*.txt
+report.xml
+test_out.txt
+
+# Scratch files
+debug_redis.py
+run_tests.py
+
+# Editor
+.vscode/
+*.swp

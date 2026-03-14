@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TaskFlow — Redis Queue Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0f12;
+      --bg2:      #13161c;
+      --bg3:      #1a1e27;
+      --bg4:      #21262f;
+      --border:   #2a2f3d;
+      --border2:  #353c4e;
+      --text:     #e2e8f0;
+      --text2:    #8892a4;
+      --text3:    #4a5568;
+      --green:    #22c55e;
+      --green-bg: rgba(34,197,94,.08);
+      --green-bd: rgba(34,197,94,.25);
+      --red:      #ef4444;
+      --red-bg:   rgba(239,68,68,.08);
+      --red-bd:   rgba(239,68,68,.25);
+      --amber:    #f59e0b;
+      --amber-bg: rgba(245,158,11,.08);
+      --amber-bd: rgba(245,158,11,.25);
+      --blue:     #3b82f6;
+      --blue-bg:  rgba(59,130,246,.08);
+      --blue-bd:  rgba(59,130,246,.25);
+      --purple:   #a855f7;
+      --purple-bg:rgba(168,85,247,.08);
+      --purple-bd:rgba(168,85,247,.25);
+      --cyan:     #06b6d4;
+      --font:     'Inter', sans-serif;
+      --mono:     'JetBrains Mono', monospace;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; line-height: 1.5; overflow-x: hidden; }
+
+    /* ── Layout ── */
+    .layout { display: grid; grid-template-columns: 210px 1fr; min-height: 100vh; }
+
+    /* ── Sidebar ── */
+    .sidebar { background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+    .logo { padding: 18px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .logo-icon { width: 30px; height: 30px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; }
+    .logo-text { font-size: 14px; font-weight: 600; color: var(--text); }
+    .logo-sub { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+    .nav { padding: 12px 8px; flex: 1; }
+    .nav-section { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); padding: 0 8px; margin: 12px 0 4px; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; color: var(--text2); cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; border: 1px solid transparent; }
+    .nav-item:hover { background: var(--bg3); color: var(--text); }
+    .nav-item.active { background: var(--blue-bg); color: var(--blue); border-color: var(--blue-bd); }
+    .nav-icon { width: 15px; height: 15px; opacity: .8; }
+    .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+    .redis-status { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--green); }
+    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; flex-shrink: 0; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Main ── */
+    .main { display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--bg2); position: sticky; top: 0; z-index: 10; }
+    .page-title { font-size: 15px; font-weight: 600; }
+    .page-sub { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 1px; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+    /* ── Badge ── */
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; font-family: var(--mono); border: 1px solid; }
+    .badge-green  { background: var(--green-bg);  color: var(--green);  border-color: var(--green-bd); }
+    .badge-red    { background: var(--red-bg);    color: var(--red);    border-color: var(--red-bd); }
+    .badge-amber  { background: var(--amber-bg);  color: var(--amber);  border-color: var(--amber-bd); }
+    .badge-blue   { background: var(--blue-bg);   color: var(--blue);   border-color: var(--blue-bd); }
+    .badge-purple { background: var(--purple-bg); color: var(--purple); border-color: var(--purple-bd); }
+    .badge-gray   { background: var(--bg3); color: var(--text2); border-color: var(--border); }
+
+    /* ── Content ── */
+    .content { padding: 22px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── Metric cards ── */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .metric { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; transition: border-color .2s; }
+    .metric:hover { border-color: var(--border2); }
+    .metric-label { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+    .metric-value { font-size: 28px; font-weight: 600; font-family: var(--mono); line-height: 1; }
+    .metric-sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
+    .metric-spark { display: flex; align-items: flex-end; gap: 2px; height: 32px; margin-top: 8px; }
+    .spark-bar { width: 8px; border-radius: 2px 2px 0 0; background: var(--blue); opacity: .4; transition: height .4s ease; }
+    .spark-bar.active { opacity: 1; }
+
+    /* ── Grid rows ── */
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .row-3 { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
+
+    /* ── Panel ── */
+    .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; border-bottom: 1px solid var(--border); }
+    .panel-title { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
+    .panel-body { padding: 14px 16px; }
+
+    /* ── Workers ── */
+    .worker-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--bg3); border-radius: 7px; border: 1px solid var(--border); margin-bottom: 7px; transition: border-color .2s; }
+    .worker-row:last-child { margin-bottom: 0; }
+    .worker-row:hover { border-color: var(--border2); }
+    .worker-id { font-family: var(--mono); font-size: 11px; color: var(--text2); width: 72px; flex-shrink: 0; }
+    .worker-bar-wrap { flex: 1; height: 4px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+    .worker-bar { height: 100%; border-radius: 2px; transition: width .6s ease, background .4s; }
+    .worker-task { font-size: 10px; color: var(--text3); width: 110px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Queue bars ── */
+    .queue-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .queue-row:last-child { margin-bottom: 0; }
+    .queue-label { font-size: 11px; color: var(--text2); width: 78px; flex-shrink: 0; }
+    .queue-bar-wrap { flex: 1; height: 8px; background: var(--bg4); border-radius: 4px; overflow: hidden; }
+    .queue-bar { height: 100%; border-radius: 4px; transition: width .8s ease; }
+    .queue-count { font-family: var(--mono); font-size: 11px; color: var(--text2); width: 24px; text-align: right; }
+
+    /* ── Task table ── */
+    .task-table { width: 100%; border-collapse: collapse; }
+    .task-table th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); padding: 0 0 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .task-table td { padding: 8px 0; border-bottom: 1px solid rgba(42,47,61,.5); font-size: 11px; color: var(--text2); vertical-align: middle; }
+    .task-table tr:last-child td { border-bottom: none; }
+    .task-name { color: var(--text); font-weight: 500; font-size: 12px; }
+    .ai-tag { display: inline-flex; align-items: center; padding: 1px 5px; background: var(--purple-bg); color: var(--purple); border-radius: 3px; font-size: 9px; font-weight: 700; font-family: var(--mono); border: 1px solid var(--purple-bd); margin-right: 5px; }
+
+    /* ── Filter bar ── */
+    .filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .filter-btn { padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text2); font-family: var(--font); transition: all .15s; }
+    .filter-btn:hover { border-color: var(--border2); color: var(--text); }
+    .filter-btn.active { background: var(--blue-bg); color: var(--blue); border-color: var(--blue-bd); }
+
+    /* ── Log panel ── */
+    .log-panel { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+    .log-body { font-family: var(--mono); font-size: 10.5px; line-height: 1.8; padding: 12px 14px; overflow-y: auto; height: 320px; }
+    .log-line { display: flex; gap: 10px; padding: 1px 0; }
+    .log-time { color: var(--text3); flex-shrink: 0; user-select: none; }
+    .log-INFO    { color: var(--blue); }
+    .log-OK      { color: var(--green); }
+    .log-WARN    { color: var(--amber); }
+    .log-ERR     { color: var(--red); }
+    .log-msg     { color: var(--text2); }
+    .log-msg .highlight { color: var(--cyan); }
+
+    /* ── Submit form ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-label { font-size: 11px; font-weight: 500; color: var(--text2); }
+    .form-input, .form-select { background: var(--bg3); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; color: var(--text); font-size: 12px; font-family: var(--font); outline: none; transition: border-color .15s; width: 100%; }
+    .form-input:focus, .form-select:focus { border-color: var(--blue); }
+    .form-select option { background: var(--bg3); }
+    .submit-btn { width: 100%; padding: 9px; background: var(--blue); border: none; border-radius: 7px; color: #fff; font-size: 13px; font-weight: 600; font-family: var(--font); cursor: pointer; transition: opacity .15s; margin-top: 4px; }
+    .submit-btn:hover { opacity: .85; }
+    .submit-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .form-success { color: var(--green); font-size: 11px; text-align: center; margin-top: 6px; font-family: var(--mono); }
+    .form-error { color: var(--red); font-size: 11px; text-align: center; margin-top: 6px; font-family: var(--mono); }
+
+    /* ── DLQ section ── */
+    .dlq-value { font-size: 26px; font-weight: 600; font-family: var(--mono); color: var(--red); line-height: 1; }
+    .dlq-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .btn-success { padding: 5px 12px; background: var(--green-bg); border: 1px solid var(--green-bd); color: var(--green); border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; font-family: var(--font); transition: opacity .15s; }
+    .btn-danger  { padding: 5px 12px; background: var(--red-bg); border: 1px solid var(--red-bd); color: var(--red); border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; font-family: var(--font); transition: opacity .15s; }
+    .btn-success:hover, .btn-danger:hover { opacity: .75; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    /* ── Animations ── */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .fade-in { animation: fadeIn .25s ease forwards; }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">Q</div>
+      <div>
+        <div class="logo-text">TaskFlow</div>
+        <div class="logo-sub">redis · v1.0</div>
+      </div>
+    </div>
+    <div class="nav">
+      <div class="nav-section">Monitor</div>
+      <div class="nav-item active" onclick="showPage('overview', this)">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Overview
+      </div>
+      <div class="nav-item" onclick="showPage('tasks', this)">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/></svg>
+        Task Feed
+      </div>
+      <div class="nav-item" onclick="showPage('submit', this)">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Submit Task
+      </div>
+      <div class="nav-section">System</div>
+      <div class="nav-item" onclick="showPage('dlq', this)">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Dead Letter Queue
+      </div>
+      <div class="nav-item" onclick="showPage('logs', this)">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Event Logs
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="redis-status"><div class="pulse"></div>Redis connected</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:3px;font-family:var(--mono)">localhost:6379</div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="page-title" id="page-title">System Overview</div>
+        <div class="page-sub" id="page-sub">live · updated every 2s</div>
+      </div>
+      <div class="topbar-right">
+        <span class="badge badge-green"><div class="pulse"></div>Live</span>
+        <span class="badge badge-blue" id="tps-badge">0 t/s</span>
+      </div>
+    </div>
+
+    <!-- Pages -->
+    <div id="page-overview" class="content">
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Tasks processed</div>
+          <div class="metric-value" id="m-processed">0</div>
+          <div class="metric-spark" id="spark"></div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Queue depth</div>
+          <div class="metric-value" id="m-queue">0</div>
+          <div class="metric-sub" id="m-queue-sub">— pending</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Success rate</div>
+          <div class="metric-value" id="m-rate">—%</div>
+          <div class="metric-sub" id="m-rate-sub">calculating...</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Dead letter queue</div>
+          <div class="dlq-value" id="m-dlq">0</div>
+          <div class="dlq-actions">
+            <button class="btn-success" onclick="requeueAll()">Requeue all</button>
+            <button class="btn-danger" onclick="discardAll()">Discard all</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row-2">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Worker pool</div>
+            <span class="badge badge-green" id="active-workers-badge">0 active</span>
+          </div>
+          <div class="panel-body" id="workers-container"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Queue depth by priority</div>
+            <span class="badge badge-blue" id="queue-total-badge">0 total</span>
+          </div>
+          <div class="panel-body" id="queue-bars-container"></div>
+        </div>
+      </div>
+
+      <div class="row-3">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Recent tasks</div>
+            <span class="badge badge-amber" id="recent-count-badge">0 tasks</span>
+          </div>
+          <div class="panel-body" style="padding:0 16px">
+            <table class="task-table">
+              <thead><tr>
+                <th>Task</th><th>Priority</th><th>Worker</th><th>Status</th>
+              </tr></thead>
+              <tbody id="recent-tasks-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="log-panel">
+          <div class="panel-header" style="padding:11px 14px">
+            <div class="panel-title">Event log</div>
+            <span class="badge badge-green"><div class="pulse"></div>SSE</span>
+          </div>
+          <div class="log-body" id="mini-log"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Feed Page -->
+    <div id="page-tasks" class="content" style="display:none">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">All tasks</div>
+          <div class="filter-bar" id="task-filters">
+            <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
+            <button class="filter-btn" onclick="setFilter('queued', this)">Queued</button>
+            <button class="filter-btn" onclick="setFilter('running', this)">Running</button>
+            <button class="filter-btn" onclick="setFilter('completed', this)">Completed</button>
+            <button class="filter-btn" onclick="setFilter('failed', this)">Failed</button>
+            <button class="filter-btn" onclick="setFilter('retrying', this)">Retrying</button>
+          </div>
+        </div>
+        <div style="padding:0 16px">
+          <table class="task-table">
+            <thead><tr>
+              <th>Task name</th><th>Type</th><th>Priority</th><th>Worker</th><th>Status</th><th>Retries</th><th>AI</th>
+            </tr></thead>
+            <tbody id="all-tasks-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit Page -->
+    <div id="page-submit" class="content" style="display:none">
+      <div class="panel" style="max-width:520px">
+        <div class="panel-header">
+          <div class="panel-title">Submit a new task</div>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Task name</label>
+              <input class="form-input" id="f-name" placeholder="e.g. Payment confirmation" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Task type</label>
+              <select class="form-select" id="f-type">
+                <option value="payment">Payment</option>
+                <option value="image">Image resize</option>
+                <option value="report">Report generation</option>
+                <option value="digest">Weekly digest</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Priority <span style="color:var(--text3)">(leave blank for AI)</span></label>
+              <select class="form-select" id="f-priority">
+                <option value="">Auto (AI classifier)</option>
+                <option value="CRITICAL">CRITICAL</option>
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LOW">LOW</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Amount / filename / recipients</label>
+              <input class="form-input" id="f-payload" placeholder="e.g. 500" />
+            </div>
+          </div>
+          <button class="submit-btn" id="submit-btn" onclick="submitTask()">Submit Task</button>
+          <div id="submit-feedback"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DLQ Page -->
+    <div id="page-dlq" class="content" style="display:none">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Dead letter queue</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-success" onclick="requeueAll()">Requeue all</button>
+            <button class="btn-danger" onclick="discardAll()">Discard all</button>
+          </div>
+        </div>
+        <div style="padding:0 16px">
+          <table class="task-table">
+            <thead><tr>
+              <th>Task name</th><th>Type</th><th>Priority</th><th>Error</th><th>Retries</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="dlq-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs Page -->
+    <div id="page-logs" class="content" style="display:none">
+      <div class="log-panel" style="border-radius:10px">
+        <div class="panel-header" style="padding:11px 14px">
+          <div class="panel-title">Full event log stream</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="badge badge-green"><div class="pulse"></div>SSE live</span>
+            <button class="filter-btn" onclick="clearLogs()">Clear</button>
+          </div>
+        </div>
+        <div class="log-body" id="full-log" style="height:calc(100vh - 160px)"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
